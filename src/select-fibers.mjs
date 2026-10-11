@@ -54,9 +54,28 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
   assertObject(resources, "resources");
 
   for (const field of REQUIRED_REQUEST_FIELDS) {
-    if (request[field] === undefined || request[field] === null || request[field] === "") {
-      throw new TypeError(`request.${field} is required`);
+    if (typeof request[field] !== "string" || request[field].trim() === "") {
+      throw new TypeError(`request.${field} must be a non-empty string`);
     }
+  }
+
+  // A valid language tag does not establish a supported locale or readable content.
+  try {
+    Intl.getCanonicalLocales(request.locale);
+  } catch {
+    throw new RangeError(`invalid PTGAE BCP 47 language tag: ${request.locale}`);
+  }
+
+  if (request.exceptionIds !== undefined && !Array.isArray(request.exceptionIds)) {
+    throw new TypeError("request.exceptionIds must be an array");
+  }
+  // The 0.1 selector has no authority/scope verifier. Never attest a requested
+  // exception was applied merely because its identifier was supplied.
+  if (request.exceptionIds?.length) {
+    throw new RangeError("PTGAE exceptions require a verified authority-scoped resolver");
+  }
+  if (resources.bundleVersion !== undefined && resources.bundleVersion !== request.bundleVersion) {
+    throw new RangeError("PTGAE bundle version mismatch");
   }
 
   const required = ["claimStatus", "registers", "accessibility", "sourcePreservation"];
@@ -94,6 +113,14 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     if (fiber?.version) fiberVersions[name] = fiber.version;
   }
 
+  // Hash resolved source bytes in addition to the request so receipts distinguish
+  // identical coordinates evaluated against different language resources.
+  const resourceHashes = {};
+  for (const [name, value] of Object.entries(resources)) {
+    if (name === "bundleVersion" || value === undefined) continue;
+    resourceHashes[name] = createHash("sha256").update(stableJson(value)).digest("hex");
+  }
+
   return {
     bundleVersion: request.bundleVersion,
     request: structuredClone(request),
@@ -103,7 +130,8 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
       bundleVersion: request.bundleVersion,
       fiberVersions,
       requestHash: requestHash(request),
-      exceptionsApplied: [...(request.exceptionIds ?? [])],
+      exceptionsApplied: [],
+      resourceHashes,
     },
   };
 }

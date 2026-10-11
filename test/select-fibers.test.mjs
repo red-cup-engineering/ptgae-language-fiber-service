@@ -77,3 +77,47 @@ test("refuses missing required bundle fibers rather than inventing defaults", ()
     /resources\.sourcePreservation is required/u,
   );
 });
+
+
+test("rejects non-empty exception requests without authority verification", () => {
+  assert.throws(
+    () => selectPtgaeFibers({
+      request: { ...request, exceptionIds: ["assumed-approval"] },
+      resources,
+    }),
+    /verified authority-scoped resolver/u,
+  );
+});
+
+test("rejects invalid BCP 47 language tags while not asserting locale support", () => {
+  assert.throws(
+    () => selectPtgaeFibers({
+      request: { ...request, locale: "en_US" },
+      resources,
+    }),
+    /invalid PTGAE BCP 47/u,
+  );
+});
+
+test("refuses an explicitly declared conflicting bundle version", () => {
+  assert.throws(
+    () => selectPtgaeFibers({
+      request,
+      resources: { ...resources, bundleVersion: "9.9.9" },
+    }),
+    /bundle version mismatch/u,
+  );
+});
+
+test("content hashes distinguish different fibers under identical coordinates", () => {
+  const options = { request, resources, selectedAt: "2026-10-07T00:00:00.000Z" };
+  const before = selectPtgaeFibers(options);
+  const changed = selectPtgaeFibers({
+    ...options,
+    resources: { ...resources, accessibility: { ...resources.accessibility, rule: "a changed rule" } },
+  });
+  assert.match(before.receipt.resourceHashes.accessibility, /^[0-9a-f]{64}$/u);
+  assert.notEqual(before.receipt.resourceHashes.accessibility, changed.receipt.resourceHashes.accessibility);
+  assert.equal(before.receipt.requestHash, changed.receipt.requestHash);
+  assert.deepEqual(before.receipt.exceptionsApplied, []);
+});
