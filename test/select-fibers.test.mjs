@@ -153,3 +153,19 @@ test("refuses source bundles without an admitted version or locale-qualified fib
     /resources.claimStatus.language is required/u,
   );
 });
+
+test("refuses a translated or unspecified optional fiber mixed into en-US", () => {
+  const mixed = { ...resources, localization: { language: "fr-FR", version: "0.1.0", strings: {} } };
+  assert.throws(
+    () => selectPtgaeFibers({ request, resources: mixed }),
+    /unsupported PTGAE locale/u,
+  );
+  const missing = { ...resources, lexicon: { version: "0.1.0", words: [] } };
+  assert.throws(
+    () => selectPtgaeFibers({ request, resources: missing }),
+    /resources.lexicon.language is required/u,
+  );
+  const sameLocale = { ...resources, lexicon: { language: "en-US", version: "0.1.0", words: [] } };
+  const result = selectPtgaeFibers({ request, resources: sameLocale });
+  assert.equal(result.fibers.lexicon.language, "en-US");
+});
