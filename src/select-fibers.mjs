@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { projectPtgaeTermReadings } from "./project-term-readings.mjs";
 
 const REQUIRED_REQUEST_FIELDS = [
   "bundleVersion",
@@ -108,6 +109,12 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     }
   }
 
+  // Optional term readings are a downstream PTGAE *linguistic* projection, not
+  // new English parsing or SignCell testimony. The original request hash
+  // includes these source-qualified alternatives and preserves their order.
+  const termReadings = request.termResolutions === undefined
+    ? null : projectPtgaeTermReadings(request.termResolutions, locale);
+
   const claim = findClaimStatus(resources.claimStatus, request.claimStatus);
   const register = findRegister(resources.registers, request.register);
 
@@ -159,6 +166,7 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     request: structuredClone(request),
     selectedAt,
     fibers,
+    ...(termReadings === null ? {} : { termReadings }),
     receipt: {
       bundleVersion: request.bundleVersion,
       fiberVersions,
