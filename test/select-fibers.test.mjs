@@ -194,3 +194,47 @@ test("returns original syntax, surface and corpus fibers rather than discarding 
   );
   assert.equal(selectPtgaeFibers({request,resources}).fibers.surfaceForm,null);
 });
+
+
+test("projects old English-branch PTGAE terms through the actual selected bundle, without truth or authority", () => {
+  const original = selectPtgaeFibers({request,resources,selectedAt:"2026-10-17T00:00:00Z"});
+  const withTerms = selectPtgaeFibers({
+    request:{...request,termResolutions:[
+      {surface:"Semioverse",state:"resolved",canonicalId:"ni:///sha-256;token",sourceRevision:"source@1"},
+      {surface:"cell",state:"ambiguous",readings:[
+        {termId:"science:cell",sourceRevision:"source@1",locale:"en-us"},
+        {termId:"computer:cell",sourceRevision:"source@2",locale:"en-US"}]},
+      {surface:"former-name",state:"deprecated",canonicalId:"old",replacementId:"new",sourceRevision:"source@3"},
+      {surface:"unknown-term",state:"unresolved"},
+    ]},
+    resources,selectedAt:"2026-10-17T00:00:00Z",
+  });
+  assert.equal(withTerms.termReadings.kind,"ptgae.term-reading-projection.v0.1");
+  assert.equal(withTerms.termReadings.readings.length,4);
+  assert.equal(withTerms.termReadings.readings[1].state,"ambiguous");
+  assert.equal(withTerms.termReadings.readings[1].readings.length,2);
+  assert.equal(withTerms.termReadings.readings[3].surface,"unknown-term");
+  assert.equal(withTerms.termReadings.sourceIdentityVerified,false);
+  assert.equal(withTerms.termReadings.evidenceForWorldClaim,false);
+  assert.deepEqual(withTerms.termReadings.executableEffects,[]);
+  assert.notEqual(original.receipt.requestHash,withTerms.receipt.requestHash);
+  assert.equal(original.termReadings,undefined);
+});
+
+test("refuses fabricated resolved terms, collapsed ambiguity, foreign-locale reading and implicit authority", () => {
+  const select = termResolutions => selectPtgaeFibers({
+    request:{...request,termResolutions},resources,selectedAt:"2026-10-17T00:00:00Z",
+  });
+  assert.throws(()=>select([{surface:"x",state:"resolved"}]),/canonicalId/);
+  assert.throws(()=>select([{surface:"x",state:"unresolved",canonicalId:"invented"}]),/unresolved/);
+  assert.throws(()=>select([{surface:"x",state:"deprecated",canonicalId:"a",
+    replacementId:"a",sourceRevision:"r"}]),/distinct replacement/);
+  assert.throws(()=>select([{surface:"x",state:"ambiguous",readings:[
+    {termId:"same",sourceRevision:"1"},{termId:"same",sourceRevision:"1"}]}]),/repeated/);
+  assert.throws(()=>select([{surface:"x",state:"ambiguous",readings:[
+    {termId:"a",sourceRevision:"1",locale:"es-419"},
+    {termId:"b",sourceRevision:"2",locale:"en-US"}]}]),/another locale/);
+  assert.throws(()=>select([{surface:"x",state:"both-true-and-false"}]),/unknown term resolution state/);
+  assert.throws(()=>select([{surface:"x",state:"resolved",canonicalId:"id",
+    sourceRevision:"rev",authority:"publish"}]),/admitted fields/);
+});
