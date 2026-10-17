@@ -169,3 +169,28 @@ test("refuses a translated or unspecified optional fiber mixed into en-US", () =
   const result = selectPtgaeFibers({ request, resources: sameLocale });
   assert.equal(result.fibers.lexicon.language, "en-US");
 });
+
+test("returns original syntax, surface and corpus fibers rather than discarding them", () => {
+  const selectedResources = {
+    ...resources,
+    syntaxDirectness: { fiber:"syntax-directness", version:"0.1.0", language:"en-US", rules:["Name the actor."] },
+    surfaceForm: { fiber:"surface-form", version:"0.1.0", language:"en-US", headings:["Use concrete headings."] },
+    corpusCanonicality: { fiber:"corpus-canonicality", version:"0.1.0", language:"en-US", exclusions:["generatedDraft"] },
+  };
+  const result = selectPtgaeFibers({request, resources:selectedResources, selectedAt:"2026-10-17T20:00:00Z"});
+  assert.equal(result.fibers.syntaxDirectness, selectedResources.syntaxDirectness);
+  assert.equal(result.fibers.surfaceForm, selectedResources.surfaceForm);
+  assert.equal(result.fibers.corpusCanonicality, selectedResources.corpusCanonicality);
+  assert.equal(result.receipt.fiberVersions.syntaxDirectness,"0.1.0");
+  assert.equal(result.receipt.fiberVersions.surfaceForm,"0.1.0");
+  assert.equal(result.receipt.fiberVersions.corpusCanonicality,"0.1.0");
+  assert.match(result.receipt.resourceHashes.corpusCanonicality,/^[0-9a-f]{64}$/u);
+  assert.throws(
+    () => selectPtgaeFibers({
+      request,
+      resources:{...selectedResources,surfaceForm:{...selectedResources.surfaceForm,language:"es-ES"}},
+    }),
+    /unsupported PTGAE locale/u,
+  );
+  assert.equal(selectPtgaeFibers({request,resources}).fibers.surfaceForm,null);
+});
