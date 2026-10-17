@@ -1,10 +1,13 @@
 {
   "name": "@red-cup-engineering/ptgae-language-fiber-service",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Select versioned PTGAE language fibers for 561 language-engine consumers.",
-  "exports": "./src/select-fibers.mjs",
+  "exports": {
+    ".": "./src/select-fibers.mjs",
+    "./term-readings": "./src/project-term-readings.mjs"
+  },
   "scripts": {
     "test": "node --test test/*.test.mjs"
   },
