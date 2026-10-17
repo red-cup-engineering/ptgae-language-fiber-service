@@ -89,8 +89,11 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
   // A selected locale must agree with the source resource's actual language.
   // This refuses unsupported locales rather than silently dressing en-US as
   // another translation. Locale-specific resources can be supplied explicitly.
-  for (const resource of ["claimStatus", "registers", "accessibility"]) {
-    const language = resources[resource].language;
+  const requiredLanguages = new Set(["claimStatus", "registers", "accessibility"]);
+  for (const resource of [...requiredLanguages, "lexicon", "terminology", "localization", "generationConstraints"]) {
+    const fiber = resources[resource];
+    if (fiber == null) continue;
+    const language = fiber.language ?? fiber.locale;
     if (typeof language !== "string" || !language) {
       throw new TypeError(`resources.${resource}.language is required`);
     }
