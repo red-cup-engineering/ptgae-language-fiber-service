@@ -144,8 +144,10 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     if (fiber?.version) fiberVersions[name] = fiber.version;
   }
 
-  // Hash resolved source bytes in addition to the request so receipts distinguish
-  // identical coordinates evaluated against different language resources.
+  // Hash the normalized JSON VALUE of each supplied resource so receipts distinguish
+  // identical coordinates evaluated against different language resources. These hashes
+  // do NOT attest the bytes, path, commit, authority or custody of the original JSON
+  // files: the selector receives parsed objects, not authenticated source bytes.
   const resourceHashes = {};
   for (const [name, value] of Object.entries(resources)) {
     if (name === "bundleVersion" || value === undefined) continue;
