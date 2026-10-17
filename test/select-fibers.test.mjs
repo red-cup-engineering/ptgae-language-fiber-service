@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { selectPtgaeFibers } from "../src/select-fibers.mjs";
 
 const resources = {
+  bundleVersion: "0.1.0",
   claimStatus: {
+    language: "en-US",
     version: "0.1.0",
     statuses: [
       { id: "observed", label: "Observed", rendering: "Observed: {claim}" },
@@ -11,13 +13,14 @@ const resources = {
     ],
   },
   registers: {
+    language: "en-US",
     version: "0.1.0",
     registers: [
       { id: "technical", rules: ["Name the actual failure boundary."] },
       { id: "public-service", rules: ["Use ordinary words when they preserve meaning."] },
     ],
   },
-  accessibility: { version: "0.1.0", rules: { headings: ["Use concrete headings."] } },
+  accessibility: { language: "en-US", version: "0.1.0", rules: { headings: ["Use concrete headings."] } },
   sourcePreservation: { version: "0.1.0", classes: [{ id: "quotation", defaultAction: "preserve" }] },
 };
 
@@ -120,4 +123,33 @@ test("content hashes distinguish different fibers under identical coordinates", 
   assert.notEqual(before.receipt.resourceHashes.accessibility, changed.receipt.resourceHashes.accessibility);
   assert.equal(before.receipt.requestHash, changed.receipt.requestHash);
   assert.deepEqual(before.receipt.exceptionsApplied, []);
+});
+
+test("valid BCP 47 tags are not accepted as translations of the en-US source", () => {
+  for (const locale of ["fr-FR", "en-GB", "es-419"]) {
+    assert.throws(
+      () => selectPtgaeFibers({ request: { ...request, locale }, resources }),
+      /unsupported PTGAE locale/u,
+    );
+  }
+  const canonicalCase = selectPtgaeFibers({ request: { ...request, locale: "en-us" }, resources });
+  assert.equal(canonicalCase.fibers.register.id, "technical");
+});
+
+test("refuses source bundles without an admitted version or locale-qualified fibers", () => {
+  const { bundleVersion, ...unversioned } = resources;
+  assert.throws(
+    () => selectPtgaeFibers({ request, resources: unversioned }),
+    /resources.bundleVersion is required/u,
+  );
+  const different = { ...resources, accessibility: { ...resources.accessibility, language: "en-GB" } };
+  assert.throws(
+    () => selectPtgaeFibers({ request, resources: different }),
+    /unsupported PTGAE locale/u,
+  );
+  const unspecified = { ...resources, claimStatus: { ...resources.claimStatus, language: undefined } };
+  assert.throws(
+    () => selectPtgaeFibers({ request, resources: unspecified }),
+    /resources.claimStatus.language is required/u,
+  );
 });
