@@ -59,9 +59,10 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     }
   }
 
-  // A valid language tag does not establish a supported locale or readable content.
+  // Syntax alone does not attest that the *loaded* language fibers support a locale.
+  let locale;
   try {
-    Intl.getCanonicalLocales(request.locale);
+    [locale] = Intl.getCanonicalLocales(request.locale);
   } catch {
     throw new RangeError(`invalid PTGAE BCP 47 language tag: ${request.locale}`);
   }
@@ -74,13 +75,34 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
   if (request.exceptionIds?.length) {
     throw new RangeError("PTGAE exceptions require a verified authority-scoped resolver");
   }
-  if (resources.bundleVersion !== undefined && resources.bundleVersion !== request.bundleVersion) {
+  if (typeof resources.bundleVersion !== "string" || !resources.bundleVersion) {
+    throw new TypeError("resources.bundleVersion is required to select a source-qualified PTGAE bundle");
+  }
+  if (resources.bundleVersion !== request.bundleVersion) {
     throw new RangeError("PTGAE bundle version mismatch");
   }
 
   const required = ["claimStatus", "registers", "accessibility", "sourcePreservation"];
   for (const resource of required) {
     if (!resources[resource]) throw new TypeError(`resources.${resource} is required`);
+  }
+  // A selected locale must agree with the source resource's actual language.
+  // This refuses unsupported locales rather than silently dressing en-US as
+  // another translation. Locale-specific resources can be supplied explicitly.
+  for (const resource of ["claimStatus", "registers", "accessibility"]) {
+    const language = resources[resource].language;
+    if (typeof language !== "string" || !language) {
+      throw new TypeError(`resources.${resource}.language is required`);
+    }
+    let sourceLocale;
+    try {
+      [sourceLocale] = Intl.getCanonicalLocales(language);
+    } catch {
+      throw new RangeError(`invalid language tag in resources.${resource}.language`);
+    }
+    if (sourceLocale !== locale) {
+      throw new RangeError(`unsupported PTGAE locale: ${request.locale} (resources.${resource} is ${language})`);
+    }
   }
 
   const claim = findClaimStatus(resources.claimStatus, request.claimStatus);
