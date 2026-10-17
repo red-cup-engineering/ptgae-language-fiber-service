@@ -90,7 +90,7 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
   // This refuses unsupported locales rather than silently dressing en-US as
   // another translation. Locale-specific resources can be supplied explicitly.
   const requiredLanguages = new Set(["claimStatus", "registers", "accessibility"]);
-  for (const resource of [...requiredLanguages, "lexicon", "terminology", "localization", "generationConstraints"]) {
+  for (const resource of [...requiredLanguages, "lexicon", "terminology", "localization", "generationConstraints", "syntaxDirectness", "surfaceForm", "corpusCanonicality"]) {
     const fiber = resources[resource];
     if (fiber == null) continue;
     const language = fiber.language ?? fiber.locale;
@@ -120,6 +120,9 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     terminology: resources.terminology ?? null,
     localization: resources.localization ?? null,
     generationConstraints: resources.generationConstraints ?? null,
+    syntaxDirectness: resources.syntaxDirectness ?? null,
+    surfaceForm: resources.surfaceForm ?? null,
+    corpusCanonicality: resources.corpusCanonicality ?? null,
     lintRules: resources.lintRules ?? null,
     safeRewriteRules: resources.safeRewriteRules ?? null,
   };
@@ -134,6 +137,9 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     terminology: resources.terminology,
     localization: resources.localization,
     generationConstraints: resources.generationConstraints,
+    syntaxDirectness: resources.syntaxDirectness,
+    surfaceForm: resources.surfaceForm,
+    corpusCanonicality: resources.corpusCanonicality,
   })) {
     if (fiber?.version) fiberVersions[name] = fiber.version;
   }
