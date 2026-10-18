@@ -80,27 +80,43 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
   for (const resource of required) {
     if (!resources[resource]) throw new TypeError(`resources.${resource} is required`);
   }
-  // A selected locale must agree with the source resource's actual language.
-  // This refuses unsupported locales rather than silently dressing en-US as
-  // another translation. Locale-specific resources can be supplied explicitly.
-  const requiredLanguages = new Set(["claimStatus", "registers", "accessibility"]);
-  for (const resource of [...requiredLanguages, "lexicon", "terminology", "localization", "generationConstraints", "syntaxDirectness", "surfaceForm", "corpusCanonicality"]) {
-    const fiber = resources[resource];
-    if (fiber == null) continue;
-    const language = fiber.language ?? fiber.locale;
-    if (typeof language !== "string" || !language) {
+  // All selected *linguistic* fibers, including editor diagnostics and
+  // rewrite policies, must be actual locale-qualified resources. Bare rule
+  // arrays cannot identify which grammar edition they constrain. These rules
+  // are downstream PTGAE policy; they are not shared English grammar.
+  const localizedFibers=[
+    "claimStatus","registers","accessibility","lexicon","terminology",
+    "localization","generationConstraints","syntaxDirectness","surfaceForm",
+    "corpusCanonicality","lintRules","safeRewriteRules",
+  ];
+  for(const resource of localizedFibers){
+    const fiber=resources[resource];
+    if(fiber==null)continue;
+    if(typeof fiber!=="object"||Array.isArray(fiber))
+      throw new TypeError(`resources.${resource} must be a locale-qualified fiber object`);
+    const labels=["language","locale"].filter(key=>Object.hasOwn(fiber,key));
+    if(labels.length===0)
       throw new TypeError(`resources.${resource}.language is required`);
-    }
-    let sourceLocale;
-    try {
-      [sourceLocale] = Intl.getCanonicalLocales(language);
-    } catch {
-      throw new RangeError(`invalid language tag in resources.${resource}.language`);
-    }
-    if (sourceLocale !== locale) {
-      throw new RangeError(`unsupported PTGAE locale: ${request.locale} (resources.${resource} is ${language})`);
+    for(const label of labels){
+      const language=fiber[label];
+      if(typeof language!=="string"||language.length===0)
+        throw new TypeError(`resources.${resource}.${label} is required`);
+      let sourceLocale;
+      try {[sourceLocale]=Intl.getCanonicalLocales(language);}
+      catch {throw new RangeError(`invalid language tag in resources.${resource}.${label}`);}
+      if(sourceLocale!==locale)
+        throw new RangeError(`unsupported PTGAE locale: ${request.locale} (resources.${resource}.${label} is ${language})`);
     }
   }
+
+  // There is exactly one accessibility profile in the current source fiber.
+  // The *resource* must name it: otherwise a random request string could
+  // impersonate a selected profile without any corresponding rules.
+  const profile=resources.accessibility.profileId;
+  if(typeof profile!=="string"||profile.length===0)
+    throw new TypeError("resources.accessibility.profileId is required");
+  if(request.accessibilityProfile!==profile)
+    throw new RangeError(`unknown PTGAE accessibility profile: ${request.accessibilityProfile}`);
 
   // Optional term readings are a downstream PTGAE *linguistic* projection, not
   // new English parsing or SignCell testimony. The original request hash
@@ -140,6 +156,8 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     syntaxDirectness: resources.syntaxDirectness,
     surfaceForm: resources.surfaceForm,
     corpusCanonicality: resources.corpusCanonicality,
+    lintRules: resources.lintRules,
+    safeRewriteRules: resources.safeRewriteRules,
   })) {
     if (fiber?.version) fiberVersions[name] = fiber.version;
   }
