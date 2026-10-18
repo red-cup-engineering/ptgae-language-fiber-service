@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { canonicalJson } from "@red-cup-engineering/json-services-section";
 import { projectPtgaeTermReadings } from "./project-term-readings.mjs";
 
 const REQUIRED_REQUEST_FIELDS = [
@@ -17,16 +18,8 @@ function assertObject(value, name) {
   }
 }
 
-function stableJson(value) {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
 function requestHash(request) {
-  return createHash("sha256").update(stableJson(request)).digest("hex");
+  return createHash("sha256").update(canonicalJson(request)).digest("hex");
 }
 
 function findRegister(registers, id) {
@@ -158,7 +151,7 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
   const resourceHashes = {};
   for (const [name, value] of Object.entries(resources)) {
     if (name === "bundleVersion" || value === undefined) continue;
-    resourceHashes[name] = createHash("sha256").update(stableJson(value)).digest("hex");
+    resourceHashes[name] = createHash("sha256").update(canonicalJson(value)).digest("hex");
   }
 
   return {
