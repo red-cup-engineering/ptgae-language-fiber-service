@@ -22,7 +22,7 @@ const resources = {
       { id: "public-service", rules: ["Use ordinary words when they preserve meaning."] },
     ],
   },
-  accessibility: { language: "en-US", version: "0.1.0", rules: { headings: ["Use concrete headings."] } },
+  accessibility: { language: "en-US", version: "0.1.1", profileId: "default", rules: { headings: ["Use concrete headings."] } },
   sourcePreservation: { version: "0.1.0", classes: [{ id: "quotation", defaultAction: "preserve" }] },
 };
 
@@ -275,4 +275,45 @@ test("JCS refuses non-JSON data in a language selector before claiming stable id
   assert.throws(()=>selectPtgaeFibers({
     request,resources:{...resources,accessibility:{...resources.accessibility,invalid:"\uD800"}},
   }),/unicode-scalar|surrogate/u);
+});
+
+
+test("PTGAE editor and rewrite fibers cannot silently cross language editions",()=>{
+  for(const [name,language] of [["lintRules","fr-FR"],["safeRewriteRules","es-419"]]){
+    assert.throws(()=>selectPtgaeFibers({
+      request,resources:{...resources,[name]:{language,version:"0.1.0",rules:[]}},
+    }),/unsupported PTGAE locale/u);
+    assert.throws(()=>selectPtgaeFibers({
+      request,resources:{...resources,[name]:[]},
+    }),/locale-qualified fiber object/u);
+    const admitted=selectPtgaeFibers({
+      request,resources:{...resources,[name]:{language:"en-US",version:"0.1.0",rules:[]}},
+    });
+    assert.equal(admitted.fibers[name].language,"en-US");
+    assert.equal(admitted.receipt.fiberVersions[name],"0.1.0");
+  }
+});
+
+test("contradictory language and locale declarations cannot disguise a source fiber",()=>{
+  assert.throws(()=>selectPtgaeFibers({
+    request,resources:{...resources,surfaceForm:{
+      language:"en-US",locale:"fr-FR",version:"0.1.0",rules:[]}},
+  }),/unsupported PTGAE locale/u);
+  const matching=selectPtgaeFibers({
+    request,resources:{...resources,surfaceForm:{
+      language:"en-us",locale:"en-US",version:"0.1.0",rules:[]}},
+  });
+  assert.equal(matching.fibers.surfaceForm.version,"0.1.0");
+});
+
+test("accessibility profile must exist in its current source, not only the request",()=>{
+  assert.throws(()=>selectPtgaeFibers({
+    request:{...request,accessibilityProfile:"invented"},resources,
+  }),/unknown PTGAE accessibility profile/u);
+  assert.throws(()=>selectPtgaeFibers({
+    request,resources:{...resources,accessibility:{language:"en-US",version:"0.1.0",rules:{}}},
+  }),/resources.accessibility.profileId is required/u);
+  const source=selectPtgaeFibers({request,resources});
+  assert.equal(source.fibers.accessibility.profileId,"default");
+  assert.equal(source.receipt.fiberVersions.accessibility,"0.1.1");
 });
