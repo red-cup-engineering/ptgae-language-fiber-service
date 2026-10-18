@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { selectPtgaeFibers } from "../src/select-fibers.mjs";
+import { canonicalJson } from "@red-cup-engineering/json-services-section";
+import { createHash } from "node:crypto";
 
 const resources = {
   bundleVersion: "0.1.0",
@@ -237,4 +239,40 @@ test("refuses fabricated resolved terms, collapsed ambiguity, foreign-locale rea
   assert.throws(()=>select([{surface:"x",state:"both-true-and-false"}]),/unknown term resolution state/);
   assert.throws(()=>select([{surface:"x",state:"resolved",canonicalId:"id",
     sourceRevision:"rev",authority:"publish"}]),/admitted fields/);
+});
+
+
+test("fiber hashing reuses Data RFC8785 JCS rather than a leaf stableJson implementation",()=>{
+  const options={request,resources,selectedAt:"2026-10-17T20:00:00.000Z"};
+  const original=selectPtgaeFibers(options);
+  const same=selectPtgaeFibers({
+    ...options,
+    request:Object.fromEntries(Object.entries(request).reverse()),
+    resources:{
+      ...resources,
+      accessibility:Object.fromEntries(Object.entries(resources.accessibility).reverse()),
+    },
+  });
+  assert.equal(original.receipt.requestHash,same.receipt.requestHash);
+  assert.equal(original.receipt.resourceHashes.accessibility,same.receipt.resourceHashes.accessibility);
+  const expected=createHash("sha256").update(canonicalJson(request)).digest("hex");
+  assert.equal(original.receipt.requestHash,expected);
+  const resourceExpected=createHash("sha256").update(canonicalJson(resources.accessibility)).digest("hex");
+  assert.equal(original.receipt.resourceHashes.accessibility,resourceExpected);
+});
+
+test("JCS refuses non-JSON data in a language selector before claiming stable identity",()=>{
+  assert.throws(()=>selectPtgaeFibers({
+    request:{...request,nonfinite:Infinity},resources,
+  }),/invalid-json-value|finite/u);
+  const hostile={...resources.accessibility};
+  Object.defineProperty(hostile,"hiddenPolicy",{
+    enumerable:true,get(){throw Error("getter should not execute");},
+  });
+  assert.throws(()=>selectPtgaeFibers({
+    request,resources:{...resources,accessibility:hostile},
+  }),/invalid-json-value|accessor/u);
+  assert.throws(()=>selectPtgaeFibers({
+    request,resources:{...resources,accessibility:{...resources.accessibility,invalid:"\uD800"}},
+  }),/unicode-scalar|surrogate/u);
 });
