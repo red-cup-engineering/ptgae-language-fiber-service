@@ -16,5 +16,9 @@
   },
   "dependencies": {
     "@red-cup-engineering/json-services-section": "0.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/red-cup-engineering/ptgae-language-fiber-service.git"
   }
 }
