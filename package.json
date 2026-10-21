@@ -20,5 +20,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/red-cup-engineering/ptgae-language-fiber-service.git"
+  },
+  "license": "MIT",
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/561-group/.github/blob/main/TIPS.md"
   }
 }
