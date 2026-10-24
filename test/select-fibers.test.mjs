@@ -317,3 +317,68 @@ test("accessibility profile must exist in its current source, not only the reque
   assert.equal(source.fibers.accessibility.profileId,"default");
   assert.equal(source.receipt.fiberVersions.accessibility,"0.1.1");
 });
+
+test("partial PTGAE source selection exposes every missing optional fiber and never upgrades completeness", () => {
+  const selected = selectPtgaeFibers({ request, resources, selectedAt: "2026-10-19T17:00:00Z" });
+  assert.deepEqual(selected.fibers.missing, [
+    "lexicon", "terminology", "localization", "generationConstraints", "syntaxDirectness",
+    "surfaceForm", "corpusCanonicality", "lintRules", "safeRewriteRules"
+  ]);
+  assert.deepEqual(selected.receipt.missingFibers, selected.fibers.missing);
+  assert.equal(selected.receipt.fiberCoverage, "partial");
+  assert.equal(selected.fibers.terminology, null);
+  assert.match(selected.receipt.selectionHash, /^[0-9a-f]{64}$/u);
+});
+
+test("complete loaded fibers have a distinct source-content selection identity", () => {
+  const supplemental = Object.fromEntries([
+    "lexicon", "terminology", "localization", "generationConstraints", "syntaxDirectness",
+    "surfaceForm", "corpusCanonicality", "lintRules", "safeRewriteRules"
+  ].map(name => [name, { version: "0.1.0", language: "en-US", rules: [] }]));
+  const complete = selectPtgaeFibers({ request, resources: { ...resources, ...supplemental } });
+  const partial = selectPtgaeFibers({ request, resources });
+  assert.equal(complete.receipt.fiberCoverage, "complete");
+  assert.deepEqual(complete.fibers.missing, []);
+  assert.deepEqual(complete.receipt.missingFibers, []);
+  assert.notEqual(complete.receipt.selectionHash, partial.receipt.selectionHash);
+  assert.equal(complete.receipt.fiberVersions.terminology, "0.1.0");
+});
+
+test("selection refuses invalid bundle, fiber and requested terminology versions", () => {
+  assert.throws(() => selectPtgaeFibers({
+    request: { ...request, bundleVersion: "tomorrow" },
+    resources: { ...resources, bundleVersion: "tomorrow" },
+  }), /invalid PTGAE bundle version/u);
+  assert.throws(() => selectPtgaeFibers({
+    request, resources: { ...resources, claimStatus: { ...resources.claimStatus, version: null } }
+  }), /resources.claimStatus.version must be a semantic version/u);
+  assert.throws(() => selectPtgaeFibers({
+    request, resources: { ...resources, sourcePreservation: { classes: resources.sourcePreservation.classes } }
+  }), /resources.sourcePreservation.version must be a semantic version/u);
+  assert.throws(() => selectPtgaeFibers({
+    request: { ...request, terminologyVersion: "0.1.0" }, resources
+  }), /requested PTGAE terminology version was not selected/u);
+  const loaded = { ...resources, terminology: { language: "en-US", version: "0.1.0", terms: [] } };
+  assert.throws(() => selectPtgaeFibers({
+    request: { ...request, terminologyVersion: "0.2.0" }, resources: loaded
+  }), /requested PTGAE terminology version was not selected/u);
+  const selected = selectPtgaeFibers({ request: { ...request, terminologyVersion: "0.1.0" }, resources: loaded });
+  assert.equal(selected.receipt.fiberVersions.terminology, "0.1.0");
+  assert.ok(!selected.receipt.missingFibers.includes("terminology"));
+});
+
+test("one deterministic content selection stays identical across times and key orders", () => {
+  const earlier = selectPtgaeFibers({ request, resources, selectedAt: "2026-10-19T17:00:00Z" });
+  const later = selectPtgaeFibers({
+    request: Object.fromEntries(Object.entries(request).reverse()),
+    resources: Object.fromEntries(Object.entries(resources).reverse()),
+    selectedAt: "2026-10-20T18:00:00Z",
+  });
+  assert.notEqual(earlier.selectedAt, later.selectedAt);
+  assert.equal(earlier.receipt.selectionHash, later.receipt.selectionHash);
+  assert.deepEqual(earlier.receipt.missingFibers, later.receipt.missingFibers);
+  const amended = selectPtgaeFibers({
+    request, resources: { ...resources, accessibility: { ...resources.accessibility, rule: "materially different source rule" } },
+  });
+  assert.notEqual(amended.receipt.selectionHash, earlier.receipt.selectionHash);
+});
