@@ -11,6 +11,14 @@ const REQUIRED_REQUEST_FIELDS = [
   "claimStatus",
   "accessibilityProfile",
 ];
+const VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
+const REQUIRED_FIBERS = ["claimStatus", "registers", "accessibility", "sourcePreservation"];
+const OPTIONAL_FIBERS = [
+  "lexicon", "terminology", "localization", "generationConstraints", "syntaxDirectness",
+  "surfaceForm", "corpusCanonicality", "lintRules", "safeRewriteRules",
+];
+const FIBER_NAMES = [...REQUIRED_FIBERS, ...OPTIONAL_FIBERS];
+const LOCALIZED_FIBERS = FIBER_NAMES.filter(name => name !== "sourcePreservation");
 
 function assertObject(value, name) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -72,24 +80,21 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
   if (typeof resources.bundleVersion !== "string" || !resources.bundleVersion) {
     throw new TypeError("resources.bundleVersion is required to select a source-qualified PTGAE bundle");
   }
+  if (!VERSION.test(request.bundleVersion) || !VERSION.test(resources.bundleVersion)) {
+    throw new RangeError("invalid PTGAE bundle version");
+  }
   if (resources.bundleVersion !== request.bundleVersion) {
     throw new RangeError("PTGAE bundle version mismatch");
   }
 
-  const required = ["claimStatus", "registers", "accessibility", "sourcePreservation"];
-  for (const resource of required) {
+  for (const resource of REQUIRED_FIBERS) {
     if (!resources[resource]) throw new TypeError(`resources.${resource} is required`);
   }
   // All selected *linguistic* fibers, including editor diagnostics and
   // rewrite policies, must be actual locale-qualified resources. Bare rule
   // arrays cannot identify which grammar edition they constrain. These rules
   // are downstream PTGAE policy; they are not shared English grammar.
-  const localizedFibers=[
-    "claimStatus","registers","accessibility","lexicon","terminology",
-    "localization","generationConstraints","syntaxDirectness","surfaceForm",
-    "corpusCanonicality","lintRules","safeRewriteRules",
-  ];
-  for(const resource of localizedFibers){
+  for (const resource of LOCALIZED_FIBERS) {
     const fiber=resources[resource];
     if(fiber==null)continue;
     if(typeof fiber!=="object"||Array.isArray(fiber))
@@ -106,6 +111,24 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
       catch {throw new RangeError(`invalid language tag in resources.${resource}.${label}`);}
       if(sourceLocale!==locale)
         throw new RangeError(`unsupported PTGAE locale: ${request.locale} (resources.${resource}.${label} is ${language})`);
+    }
+  }
+
+  // A selected source resource must carry its own independently versioned
+  // edition. This does not claim all fibers share the bundle's version.
+  for (const name of FIBER_NAMES) {
+    const resource = resources[name];
+    if (resource == null) continue;
+    if (typeof resource !== "object" || Array.isArray(resource) || typeof resource.version !== "string" || !VERSION.test(resource.version)) {
+      throw new TypeError(`resources.${name}.version must be a semantic version`);
+    }
+  }
+  if (request.terminologyVersion != null) {
+    if (typeof request.terminologyVersion !== "string" || !VERSION.test(request.terminologyVersion)) {
+      throw new TypeError("request.terminologyVersion must be a semantic version");
+    }
+    if (resources.terminology?.version !== request.terminologyVersion) {
+      throw new RangeError("requested PTGAE terminology version was not selected");
     }
   }
 
@@ -142,25 +165,13 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     lintRules: resources.lintRules ?? null,
     safeRewriteRules: resources.safeRewriteRules ?? null,
   };
+  const missingFibers = OPTIONAL_FIBERS.filter(name => fibers[name] === null);
+  fibers.missing = [...missingFibers];
+  const fiberCoverage = missingFibers.length === 0 ? "complete" : "partial";
 
-  const fiberVersions = {};
-  for (const [name, fiber] of Object.entries({
-    claimStatus: resources.claimStatus,
-    registers: resources.registers,
-    accessibility: resources.accessibility,
-    sourcePreservation: resources.sourcePreservation,
-    lexicon: resources.lexicon,
-    terminology: resources.terminology,
-    localization: resources.localization,
-    generationConstraints: resources.generationConstraints,
-    syntaxDirectness: resources.syntaxDirectness,
-    surfaceForm: resources.surfaceForm,
-    corpusCanonicality: resources.corpusCanonicality,
-    lintRules: resources.lintRules,
-    safeRewriteRules: resources.safeRewriteRules,
-  })) {
-    if (fiber?.version) fiberVersions[name] = fiber.version;
-  }
+  const fiberVersions = Object.fromEntries(
+    FIBER_NAMES.filter(name => resources[name] != null).map(name => [name, resources[name].version]),
+  );
 
   // Hash the normalized JSON VALUE of each supplied resource so receipts distinguish
   // identical coordinates evaluated against different language resources. These hashes
@@ -172,6 +183,14 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     resourceHashes[name] = createHash("sha256").update(canonicalJson(value)).digest("hex");
   }
 
+  // The selection identity depends on the actual resolved parsed content,
+  // not the wall clock. Hashes do not authenticate a source blob or issuer.
+  const requestDigest = requestHash(request);
+  const selectionHash = createHash("sha256").update(canonicalJson({
+    bundleVersion: request.bundleVersion, requestHash: requestDigest,
+    resourceHashes, missingFibers, fiberCoverage,
+  })).digest("hex");
+
   return {
     bundleVersion: request.bundleVersion,
     request: structuredClone(request),
@@ -181,9 +200,12 @@ export function selectPtgaeFibers({ request, resources, selectedAt = new Date().
     receipt: {
       bundleVersion: request.bundleVersion,
       fiberVersions,
-      requestHash: requestHash(request),
+      requestHash: requestDigest,
       exceptionsApplied: [],
       resourceHashes,
+      missingFibers: [...missingFibers],
+      fiberCoverage,
+      selectionHash,
     },
   };
 }
